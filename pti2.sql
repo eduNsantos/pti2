@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS t_animais (
 	id VARCHAR(10) NOT NULL PRIMARY KEY,
     produto_id INT NOT NULL,
     animal_especie_id INT NOT NULL,
-	nome VARCHAR(25),
     peso DECIMAL(6, 2) NOT NULL,
     CONSTRAINT fk_t_animal_especies_id_animais FOREIGN KEY (animal_especie_id) REFERENCES t_animal_especies(id),
     CONSTRAINT fk_t_produtos_id_animais FOREIGN KEY (produto_id) REFERENCES t_produtos(id)
@@ -83,6 +82,7 @@ CREATE TABLE IF NOT EXISTS t_vendas (
 	id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,
     varejista_id INT NOT NULL,
 	funcionario_id INT NOT NULL,
+    data_venda DATETIME DEFAULT CURRENT_TIMESTAMP,
     status TINYINT DEFAULT 0,
     CONSTRAINT fk_t_varejista_id FOREIGN KEY (varejista_id) REFERENCES t_varejistas(id),
     CONSTRAINT fk_t_funcionarios_id FOREIGN KEY (funcionario_id) REFERENCES t_funcionarios(id)
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS t_venda_produtos (
     venda_id INT NOT NULL,
     produto_id INT NOT NULL,
     quantidade DECIMAL(7,2) NOT NULL,
-    valor_unitario_pago DECIMAL(10, 2) NOT NULL,
+    valor_vendido DECIMAL(10, 2) NOT NULL,
     CONSTRAINT fk_t_produtos_id_vendas FOREIGN KEY (produto_id) REFERENCES t_produtos(id),
     CONSTRAINT fk_t_vendas_id FOREIGN KEY (venda_id) REFERENCES t_vendas(id)
 ) ENGINE=InnoDB;
@@ -120,7 +120,7 @@ INSERT INTO t_unidade_medidas (sigla, descricao) VALUES
 ('UN', 'UNIDADE');
 
 INSERT INTO t_produtos (nome, unidade_medida_id, preco) VALUES
-('VACA LEITEIRA', 3, 4500.00),
+('VACA MIMOSA', 3, 4500.00),
 ('SOJA AMARELA',  2, 2.77),
 ('FEIJÂO CARIOCA 60KG', 1, 261.00);
 
@@ -137,13 +137,66 @@ INSERT INTO t_animal_especies (descricao) VALUES
 ('VACA LEITEIRA'),
 ('VACA EUROPEIA');
 
-INSERT INTO t_animais (id, produto_id, animal_especie_id, nome, peso) VALUES
-('V1', 1, 1, 'MIMOSA', 600.00);
+INSERT INTO t_animais (id, produto_id, animal_especie_id, peso) VALUES
+('V1', 1, 1, 600.00);
 
 INSERT INTO t_producao_leite (animal_id, data_ultima_ordenha, temperatura, houve_inseminacao, secagem_esperada, minutos_ruminacao_dia) VALUES
 ('V1', '2020-11-01 19:38:00', 38.5, 0, '2021-02-01', 320.00);
 
 INSERT INTO t_vendas (varejista_id, funcionario_id, status) VALUES (1, 1, 1);
 
-INSERT INTO t_venda_produtos (venda_id, produto_id, quantidade, valor_unitario_pago) VALUES
+INSERT INTO t_venda_produtos (venda_id, produto_id, quantidade, valor_vendido) VALUES
 (1, 2, 100, 2.50);
+
+-- detalhes de produção de leite
+SELECT
+	ani.id AS 'Identificação animal'
+    ,IFNULL(pro.nome, 'Sem nome') AS 'Nome animal'
+    ,CONCAT(pl.temperatura, ' ºC') AS 'Temperatura do leite'
+    ,pl.minutos_ruminacao_dia AS 'Minutos ruminação dia'
+    ,DATE_FORMAT(pl.secagem_esperada, '%d/%m/%Y') AS 'Data da secagem'
+    ,CONCAT(ani.peso, ' KG') AS 'Peso'
+	,DATE_FORMAT(pl.data_ultima_ordenha, '%d/%m/%Y') AS 'Ultima ordenha'
+FROM
+	t_producao_leite pl
+    INNER JOIN t_animais ani ON ani.id = pl.animal_id
+    INNER JOIN t_produtos pro ON pro.id = ani.produto_id
+    INNER JOIN t_unidade_medidas um ON um.id = pro.unidade_medida_id;
+    
+-- vendas por funcionário
+SELECT
+	fun.nome AS 'Nome funcionário',
+	COUNT(ven.id) AS 'Quantidade vendas',
+    SUM(vp.valor_vendido) AS 'Valor total vendido'
+FROM
+	t_funcionarios fun
+    LEFT JOIN t_vendas ven ON ven.funcionario_id = fun.id
+    LEFT JOIN t_venda_produtos vp ON vp.venda_id = ven.id
+GROUP BY fun.nome;
+
+-- informações dos animais
+SELECT
+	pro.nome AS 'Nome'
+    ,lo.nome AS 'Local'
+    ,CONCAT(ani.peso, ' KG') AS 'Peso'
+	,(SELECT AVG(minutos_ruminacao_dia) FROM t_producao_leite WHERE animal_id = ani.id) AS 'Tempo médio de ruminação/dia'
+	,(SELECT AVG(temperatura) FROM t_producao_leite WHERE animal_id = ani.id) AS 'Temperatura média do leite'
+	,(SELECT DATE_FORMAT(MAX(secagem_esperada), '%d/%m/%Y') FROM t_producao_leite WHERE animal_id = ani.id) AS 'Data da próxima secagem'
+FROM 
+	t_animais ani
+    INNER JOIN t_produtos pro ON pro.id = ani.produto_id
+    LEFT JOIN t_produto_locais pl ON pl.produto_id = pro.id
+    LEFT JOIN t_locais lo ON lo.codigo = pl.local_codigo;
+    
+-- Informações dos produtos
+SELECT
+	pro.id as 'Identificação do produto'
+    ,pro.nome as 'Nome do produto'
+    ,(SELECT DATE_FORMAT(MAX(data_venda), '%d/%m/%Y') FROM t_vendas) AS 'Data última venda' 
+    ,SUM(pl.quantidade_estoque) AS 'Quantidade em estoque'
+    ,um.sigla AS 'Medida'
+FROM 
+	t_produtos pro
+    LEFT JOIN t_produto_locais pl ON pl.produto_id = pro.id
+    LEFT JOIN t_unidade_medidas um ON um.id = pro.unidade_medida_id
+GROUP BY pro.id, pro.nome

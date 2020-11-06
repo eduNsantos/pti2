@@ -1,4 +1,5 @@
 DROP DATABASE IF EXISTS fazenda_bd;
+
 CREATE DATABASE IF NOT EXISTS fazenda_bd;
 
 USE fazenda_bd;

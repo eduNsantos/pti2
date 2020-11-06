@@ -1,5 +1,3 @@
-import mysql.connector;
-
 def buscar_animal(animais, identificacao_animal, inicio = 0, fim = 0):
 
     if (inicio == 0 and fim == 0):
